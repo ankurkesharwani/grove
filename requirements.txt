@@ -1,0 +1,2 @@
+ruamel.yaml>=0.18,<0.19
+tabulate>=0.9,<1.0

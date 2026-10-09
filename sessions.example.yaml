@@ -1,0 +1,10 @@
+version: 1
+
+workspaces:
+  example-stack:
+    - api
+    - web
+
+repos:
+  api: ~/Projects/example/api
+  web: ~/Projects/example/web
