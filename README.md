@@ -123,6 +123,16 @@ workspaces:
   example-stack:
     - api
     - web
+  search-feature:
+    - repo: api
+      worktree: search
+      command: nvim
+    - repo: web
+      worktree: search
+      command: [nvim, agent]
+    - dir: ~/Projects/docs
+      name: docs
+      command: agent
 
 repos:
   api: ~/Projects/example/api
@@ -132,6 +142,18 @@ repos:
 `build-index` only writes to `repos`. You maintain `workspaces` and `commands`
 by hand. A repo can belong to more than one workspace, and you can always open
 a single repo by its own name.
+
+A workspace entry is one of:
+
+- A repo name, such as `- api`.
+- A repo with presets: `repo`, plus an optional `worktree` to open and an
+  optional `command` (one command or a list).
+- A folder that isn't a Git repo: `dir` and `name`, plus an optional
+  `command`. The `name` becomes its tmux session name. It can't match a repo
+  entry, and it can only refer to one folder.
+
+Commands in `command` work like `--command`: a name from `commands`, or a
+literal command.
 
 `grove edit` opens a copy of the config in `$VISUAL` or `$EDITOR` (falling back
 to `vim`, then `vi`), the way `git commit` opens the commit message. When you
@@ -161,12 +183,19 @@ Edit the `workspaces` section, then check what Grove knows about:
 grove list
 ```
 
-Open every repo in a workspace, or open a single repo:
+Open every entry in a workspace, or open a single repo:
 
 ```sh
 grove launch --workspace example-stack --worktree feature-search
 grove launch --workspace api --worktree feature-search
+grove launch --workspace api
 ```
+
+With `--worktree`, every repo opens that worktree, overriding the workspace's
+`worktree` presets. Without it, each repo opens its preset worktree, or its
+root checkout if it has none. `--command` likewise replaces the workspace's
+`command` presets. Folder entries ignore `--worktree` and always open the
+folder itself.
 
 `-w`, `-t`, and `-c` are short for `--workspace`, `--worktree`, and `--command`:
 
@@ -174,13 +203,15 @@ grove launch --workspace api --worktree feature-search
 grove launch -w api -t feature-search -c nvim
 ```
 
-`--workspace` also takes a comma-separated list, and repos that appear in more
-than one of the listed workspaces open only once.
+`--workspace` also takes a comma-separated list, and entries that appear in
+more than one of the listed workspaces open only once.
 
-Each tmux session is named `<repo-entry>@<worktree-name>`, so worktree names
-can't contain `@` (or `,` and `/`). The worktree name doubles as the new branch
-name unless you pass `--branch REPO=BRANCH`, which you can repeat to name
-branches per repo:
+A worktree's tmux session is named `<repo-entry>@<worktree-name>`; a repo's
+root checkout and a folder entry use their name alone. Repo, folder, and
+worktree names therefore can't contain `@` (worktree names also can't contain
+`,` or `/`). The worktree name doubles as the new branch name unless you pass
+`--branch REPO=BRANCH`, which you can repeat to name branches per repo. It only
+applies to repos opened as a worktree:
 
 ```sh
 grove launch --workspace example-stack --worktree review-42 \
@@ -221,11 +252,11 @@ grove prune --workspace example-stack,tools --worktree feature-search
 ```
 
 `prune` shows what it will remove and asks before doing it; `-y/--yes` skips
-that question. Branches are always kept, so you can recreate the worktree or
-push the branch later. A worktree with uncommitted or untracked changes is
-skipped unless you pass `-f/--force`. If a worktree's tmux session is still
-open, `prune` asks whether to kill the session and remove the worktree, or leave
-both alone. `--yes` doesn't answer that question, and without an answer the
+that question. Folder entries are left alone. Branches are always kept, so you
+can recreate the worktree or push the branch later. A worktree with uncommitted
+or untracked changes is skipped unless you pass `-f/--force`. If a worktree's
+tmux session is still open, `prune` asks whether to kill the session and remove
+the worktree, or leave both alone. `--yes` doesn't answer that question, and without an answer the
 worktree is left alone.
 
 `grove list` pipes its output through `$PAGER` (default `less`) when run in a

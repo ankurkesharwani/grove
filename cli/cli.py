@@ -7,7 +7,7 @@ import sys
 import textwrap
 from typing import Any
 
-from cli.config import config_path_from_args, load_config
+from cli.config import config_path_from_args, load_config, validate_worktree_name
 from cli.edit import command_edit
 from cli.errors import LaunchError
 from cli.index import command_build_index
@@ -18,7 +18,6 @@ from cli.sessions import (
     parse_branch_overrides,
     parse_command_names,
     parse_workspace_names,
-    validate_worktree_name,
 )
 
 
@@ -51,7 +50,9 @@ def add_command(
     return parser
 
 
-def add_selection_options(parser: argparse.ArgumentParser, action: str) -> None:
+def add_selection_options(
+    parser: argparse.ArgumentParser, action: str, worktree_help: str | None = None
+) -> None:
     parser.add_argument(
         "-w",
         "--workspace",
@@ -62,9 +63,9 @@ def add_selection_options(parser: argparse.ArgumentParser, action: str) -> None:
     parser.add_argument(
         "-t",
         "--worktree",
-        required=True,
+        required=worktree_help is None,
         metavar="NAME",
-        help=f"worktree name to {action}",
+        help=worktree_help or f"worktree name to {action}",
     )
 
 
@@ -86,16 +87,24 @@ def make_parser() -> argparse.ArgumentParser:
         "launch",
         "open a worktree of each selected repo in its own tmux session",
         (
-            "Open the worktree NAME of every repo in the selected workspaces, "
-            "creating it from origin/master (or origin/main) on a new branch if "
-            "needed, and start a tmux session for each named <repo>@<worktree>. "
-            "Existing worktrees are reopened and running sessions are skipped."
+            "Start a tmux session for every entry in the selected workspaces. "
+            "With --worktree NAME, each repo opens its worktree NAME (session "
+            "<repo>@NAME), created from origin/master (or origin/main) on a new "
+            "branch if needed. Without it, each repo opens the worktree set in "
+            "the workspace, or else its root checkout (session <repo>). Folder "
+            "entries open as they are. Running sessions are skipped."
         ),
+        "  grove launch -w api\n"
         "  grove launch -w example-stack -t feature-search\n"
         "  grove launch -w api,web -t review-42 --branch api=feature/search\n"
         "  grove launch -w api -t feature-search -c nvim -c agent --attach\n",
     )
-    add_selection_options(launch, "open or create")
+    add_selection_options(
+        launch,
+        "open or create",
+        "worktree name to open or create in every repo, overriding the "
+        "workspace's worktrees (default: the workspace's, else the repo root)",
+    )
     launch.add_argument(
         "--branch",
         action="append",
@@ -116,9 +125,9 @@ def make_parser() -> argparse.ArgumentParser:
         default=[],
         metavar="NAME",
         help=(
-            "command to run in each new session: a name from the config's "
-            "commands section, or a literal command (repeatable; each extra "
-            "command gets its own window)"
+            "command to run in each new session, replacing the workspace's "
+            "commands: a name from the config's commands section, or a literal "
+            "command (repeatable; each extra command gets its own window)"
         ),
     )
 
@@ -127,7 +136,8 @@ def make_parser() -> argparse.ArgumentParser:
         "prune",
         "remove a worktree from each selected repo",
         (
-            "Remove the worktree NAME from every repo in the selected workspaces. "
+            "Remove the worktree NAME from every repo in the selected workspaces "
+            "(folder entries are left alone). "
             "Shows what will be removed and asks first. Branches are kept. If a "
             "worktree's tmux session is open, asks whether to kill it or skip "
             "that worktree."
@@ -199,7 +209,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "edit":
             return command_edit(config_path)
 
-        validate_worktree_name(args.worktree)
+        if args.worktree is not None:
+            validate_worktree_name(args.worktree)
         workspace_names = parse_workspace_names(args.workspace)
         _, config = load_config(config_path)
         if args.command == "prune":

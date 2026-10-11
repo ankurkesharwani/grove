@@ -7,11 +7,55 @@ import os
 import shlex
 import stat
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from cli.errors import LaunchError
 from cli.paths import DEFAULT_CONFIG, PROJECT_DIR, expand_path, printable_path
+
+
+REPO_ENTRY_KEYS = {"repo", "worktree", "command"}
+DIR_ENTRY_KEYS = {"dir", "name", "command"}
+
+
+@dataclass(frozen=True)
+class WorkspaceEntry:
+    """One workspace item: a repo entry (optionally a worktree) or a plain folder."""
+
+    repo: str | None = None
+    worktree: str | None = None
+    dir: str | None = None
+    name: str | None = None
+    commands: tuple[str, ...] | None = None
+
+
+def workspace_entries(config: dict[str, Any], workspace_name: str) -> list[WorkspaceEntry]:
+    entries: list[WorkspaceEntry] = []
+    for item in config["workspaces"][workspace_name]:
+        if isinstance(item, str):
+            entries.append(WorkspaceEntry(repo=item.strip()))
+            continue
+        command = item.get("command")
+        commands = (command,) if isinstance(command, str) else command
+        entries.append(
+            WorkspaceEntry(
+                repo=item.get("repo"),
+                worktree=item.get("worktree"),
+                dir=item.get("dir"),
+                name=item.get("name"),
+                commands=tuple(commands) if commands is not None else None,
+            )
+        )
+    return entries
+
+
+def validate_worktree_name(name: str) -> None:
+    if not name or name in {".", ".."} or any(char in name for char in ",@/\\"):
+        raise LaunchError(
+            "Worktree name must be a non-empty single path component "
+            "without ',' or '@'."
+        )
 
 
 def yaml_module() -> tuple[Any, Any]:
@@ -80,6 +124,8 @@ def validate_config(config: dict[str, Any]) -> None:
         raise LaunchError("Config field 'workspaces' must be a mapping.")
     if not isinstance(repos, dict):
         raise LaunchError("Config field 'repos' must be a mapping.")
+    # Dir entry name -> its folder, so one name never means two folders.
+    dir_names: dict[str, str] = {}
 
     for workspace_name, entries in workspaces.items():
         if not isinstance(workspace_name, str) or not workspace_name.strip():
@@ -90,20 +136,17 @@ def validate_config(config: dict[str, Any]) -> None:
             )
         if not isinstance(entries, list):
             raise LaunchError(
-                f"Workspace {workspace_name!r} must contain a list of repo names."
+                f"Workspace {workspace_name!r} must contain a list of entries."
             )
-        for repo_name in entries:
-            if not isinstance(repo_name, str) or not repo_name.strip():
-                raise LaunchError(
-                    f"Workspace {workspace_name!r} contains an invalid repo name."
-                )
+        for entry in entries:
+            validate_workspace_entry(workspace_name, entry, repos, dir_names)
 
     for repo_name, raw_path in repos.items():
         if not isinstance(repo_name, str) or not repo_name.strip():
             raise LaunchError("Repo entry names must be non-empty strings.")
-        if "," in repo_name or "=" in repo_name:
+        if any(char in repo_name for char in ",=@"):
             raise LaunchError(
-                f"Repo entry name {repo_name!r} cannot contain ',' or '='."
+                f"Repo entry name {repo_name!r} cannot contain ',', '=' or '@'."
             )
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise LaunchError(f"Repo {repo_name!r} must have a path string.")
@@ -118,6 +161,65 @@ def validate_config(config: dict[str, Any]) -> None:
             raise LaunchError(
                 f"Command {command_name!r} must have a command string."
             )
+
+
+def validate_workspace_entry(
+    workspace_name: str, entry: Any, repos: dict[str, Any], dir_names: dict[str, str]
+) -> None:
+    where = f"Workspace {workspace_name!r}"
+    if isinstance(entry, str):
+        if not entry.strip():
+            raise LaunchError(f"{where} contains an empty repo name.")
+        return
+    if not isinstance(entry, dict):
+        raise LaunchError(f"{where} entries must be repo names or mappings.")
+
+    if ("repo" in entry) == ("dir" in entry):
+        raise LaunchError(
+            f"{where} entry {dict(entry)!r} needs exactly one of 'repo' or 'dir'."
+        )
+    allowed = REPO_ENTRY_KEYS if "repo" in entry else DIR_ENTRY_KEYS
+    unknown = sorted(set(entry) - allowed)
+    if unknown:
+        raise LaunchError(
+            f"{where} entry {dict(entry)!r} has unknown key(s): {', '.join(unknown)}; "
+            f"allowed: {', '.join(sorted(allowed))}."
+        )
+    for key, value in entry.items():
+        if key != "command" and (not isinstance(value, str) or not value.strip()):
+            raise LaunchError(f"{where}: '{key}' must be a non-empty string.")
+
+    command = entry.get("command")
+    if command is not None:
+        commands = [command] if isinstance(command, str) else command
+        if not isinstance(commands, list) or not commands or any(
+            not isinstance(item, str) or not item.strip() for item in commands
+        ):
+            raise LaunchError(
+                f"{where}: 'command' must be a command or a list of commands."
+            )
+
+    if "repo" in entry:
+        if "worktree" in entry:
+            try:
+                validate_worktree_name(entry["worktree"])
+            except LaunchError as exc:
+                raise LaunchError(f"{where}: {exc}") from exc
+        return
+
+    if "name" not in entry:
+        raise LaunchError(f"{where}: dir entry {entry['dir']!r} needs a 'name'.")
+    name = entry["name"]
+    if any(char in name for char in ",@"):
+        raise LaunchError(f"{where}: dir name {name!r} cannot contain ',' or '@'.")
+    if name in repos:
+        raise LaunchError(
+            f"{where}: dir name {name!r} is also a repo entry; pick another name."
+        )
+    if dir_names.setdefault(name, entry["dir"]) != entry["dir"]:
+        raise LaunchError(
+            f"Dir name {name!r} is used for both {dir_names[name]!r} and {entry['dir']!r}."
+        )
 
 
 def config_repo_paths(config: dict[str, Any], config_path: Path) -> dict[str, Path]:

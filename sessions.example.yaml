@@ -8,6 +8,16 @@ workspaces:
   example-stack:
     - api
     - web
+  search-feature:
+    - repo: api
+      worktree: search
+      command: nvim
+    - repo: web
+      worktree: search
+      command: [nvim, agent]
+    - dir: ~/Projects/docs
+      name: docs
+      command: agent
 
 repos:
   api: ~/Projects/example/api

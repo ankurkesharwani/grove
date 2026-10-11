@@ -9,10 +9,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from cli.config import config_repo_paths, load_config
+from cli.config import config_repo_paths, load_config, workspace_entries
 from cli.errors import LaunchError
 from cli.git import Worktree, git_repo_root, parse_worktree_records
-from cli.paths import PROJECT_DIR, printable_path
+from cli.paths import PROJECT_DIR, expand_path, printable_path
 from cli.process import require_executable
 
 
@@ -83,10 +83,9 @@ def command_list(config_path: Path) -> int:
     repos = config_repo_paths(config, config_path)
     failures = 0
     rows: list[list[str]] = []
+    entries = {name: workspace_entries(config, name) for name in config["workspaces"]}
     workspace_repos = {
-        repo_name
-        for repo_names in config["workspaces"].values()
-        for repo_name in repo_names
+        entry.repo for workspace in entries.values() for entry in workspace if entry.repo
     }
 
     def append_repo_rows(workspace_name: str, repo_name: str) -> None:
@@ -123,12 +122,26 @@ def command_list(config_path: Path) -> int:
                 ]
             )
 
-    for workspace_name, repo_names in config["workspaces"].items():
-        if not repo_names:
-            rows.append([workspace_name, "-", "-", "-", "(no repos)"])
+    for workspace_name, workspace in entries.items():
+        if not workspace:
+            rows.append([workspace_name, "-", "-", "-", "(no entries)"])
             continue
-        for repo_name in repo_names:
-            append_repo_rows(workspace_name, repo_name)
+        listed: set[str] = set()
+        for entry in workspace:
+            if entry.dir is not None:
+                path = expand_path(entry.dir, config_path)
+                label = f"{entry.name} (dir)"
+                if path.is_dir():
+                    rows.append([workspace_name, label, "", "", printable_path(path)])
+                else:
+                    rows.append(
+                        [workspace_name, label, "-", "-", f"ERROR missing folder {path}"]
+                    )
+                    failures += 1
+            elif entry.repo not in listed:
+                # A repo listed twice (e.g. with different worktrees) is shown once.
+                listed.add(entry.repo)
+                append_repo_rows(workspace_name, entry.repo)
 
     for repo_name in repos:
         if repo_name not in workspace_repos:
