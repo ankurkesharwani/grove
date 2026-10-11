@@ -42,7 +42,10 @@ def make_parser() -> argparse.ArgumentParser:
         help="Target branch override for a repo (repeatable)",
     )
     parser.add_argument("--attach", action="store_true", help="Attach to the first session")
-    parser.add_argument("command", nargs="?", choices=("build-index", "list"))
+    parser.add_argument(
+        "--nvim", action="store_true", help="Start nvim in each newly created session"
+    )
+    parser.add_argument("command", nargs="?", choices=("launch", "build-index", "list"))
     parser.add_argument("folder", nargs="?", help="Folder to scan with build-index")
     return parser
 
@@ -55,19 +58,21 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "build-index":
             if not args.folder:
                 parser.error("build-index requires <folder>")
-            if args.workspace or args.worktree or args.branch or args.attach:
-                parser.error("open options cannot be used with build-index")
+            if args.workspace or args.worktree or args.branch or args.attach or args.nvim:
+                parser.error("launch options cannot be used with build-index")
             return command_build_index(args.folder, config_path)
         if args.command == "list":
             if args.folder:
                 parser.error("list does not take a folder")
-            if args.workspace or args.worktree or args.branch or args.attach:
-                parser.error("open options cannot be used with list")
+            if args.workspace or args.worktree or args.branch or args.attach or args.nvim:
+                parser.error("launch options cannot be used with list")
             return command_list(config_path)
+        if args.command is None:
+            parser.error("a command is required: launch, build-index, or list")
         if args.folder:
-            parser.error("unexpected positional argument; use build-index <folder>")
+            parser.error("launch does not take a folder")
         if not args.worktree:
-            parser.error("opening sessions requires --worktree <name>")
+            parser.error("launch requires --worktree <name>")
         validate_worktree_name(args.worktree)
         workspace_names = parse_workspace_names(args.workspace)
         branch_overrides = parse_branch_overrides(args.branch)
@@ -79,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
             args.worktree,
             branch_overrides,
             args.attach,
+            args.nvim,
         )
     except LaunchError as exc:
         print(f"grove: error: {exc}", file=sys.stderr)

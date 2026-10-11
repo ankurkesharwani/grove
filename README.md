@@ -150,8 +150,8 @@ grove list
 Open every repo in a workspace, or open a single repo:
 
 ```sh
-grove --workspace example-stack --worktree feature-search
-grove --workspace api --worktree feature-search
+grove launch --workspace example-stack --worktree feature-search
+grove launch --workspace api --worktree feature-search
 ```
 
 `--workspace` also takes a comma-separated list, and repos that appear in more
@@ -162,7 +162,7 @@ doubles as the new branch name unless you pass `--branch REPO=BRANCH`, which
 you can repeat to name branches per repo:
 
 ```sh
-grove --workspace example-stack --worktree review-42 \
+grove launch --workspace example-stack --worktree review-42 \
   --branch api=feature/search --branch web=bugfix/header
 ```
 
@@ -179,6 +179,14 @@ it reopens existing worktrees and skips tmux sessions that are already running.
 
 `--attach` attaches to the first session it created or found. If you're
 already inside tmux, it switches the client to that session instead.
+
+`--nvim` starts Neovim in each newly created session by typing `nvim` into its
+shell, so quitting Neovim leaves you at a shell in the worktree. Sessions that
+were already running are left untouched.
+
+```sh
+grove launch --workspace example-stack --worktree feature-search --nvim --attach
+```
 
 `grove list` pipes its output through `$PAGER` (default `less`) when run in a
 terminal. `less` clips long lines; piped output stays plain text.

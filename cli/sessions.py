@@ -152,8 +152,11 @@ def open_sessions(
     worktree_name: str,
     branch_overrides: dict[str, str],
     attach: bool,
+    nvim: bool,
 ) -> int:
     require_executable("git")
+    if nvim:
+        require_executable("nvim")
     workspaces = config["workspaces"]
     repo_paths = config_repo_paths(config, config_path)
     unknown_names = [
@@ -234,6 +237,10 @@ def open_sessions(
                     str(path),
                 ]
             )
+            if nvim:
+                run_process(
+                    ["tmux", "send-keys", "-t", f"={session_name}:", "nvim", "Enter"]
+                )
             if attach_target is None:
                 attach_target = session_name
             status = "Created" if created else "Opened"
