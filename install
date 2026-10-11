@@ -1,16 +1,83 @@
 #!/bin/sh
 
-set -eu
-
-BASE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+BASE_DIR=$(cd "$(dirname "$0")" && pwd)
 VENV_DIR="$BASE_DIR/venv"
 
+echo "Started installation"
+
 if ! command -v python3 >/dev/null 2>&1; then
-  echo "grove: python3 is required to install the local environment." >&2
+  echo "Installation failed; python3 is required"
   exit 1
 fi
 
-echo "Creating project-local Python environment at $VENV_DIR"
+if [ -d "$VENV_DIR" ]; then
+  echo "Found a virtual environment. Removing existing one."
+  rm -rf "$VENV_DIR"
+fi
+
+echo "Setting up python virtual environment"
 python3 -m venv "$VENV_DIR"
-"$VENV_DIR/bin/python" -m pip install -r "$BASE_DIR/requirements.txt"
-echo "Installation complete. Add $BASE_DIR to PATH to run grove from anywhere."
+
+echo "Setting permissions"
+chmod a+rx "$BASE_DIR/grove"
+chmod a+rx "$BASE_DIR/install"
+
+# If requirements.txt does not exist, we are done.
+if [ -f "$BASE_DIR/requirements.txt" ]; then
+  if [ -d "$VENV_DIR" ]; then
+
+    echo "Installing dependencies"
+
+    # Activate python virtual environment
+    . "$VENV_DIR/bin/activate"
+
+    # Install dependencies
+    if ! pip install -r "$BASE_DIR/requirements.txt"; then
+      deactivate
+      echo "Installation failed; dependencies could not be installed"
+      exit 1
+    fi
+
+    # Deactivate virtual environment
+    deactivate
+  else
+    echo "Installation failed; Python environment could not be setup properly"
+    exit 1
+  fi
+fi
+
+SHELL_NAME=$(basename "${SHELL:-}")
+case "$SHELL_NAME" in
+"bash")
+  RC_FILE="$HOME/.bashrc"
+  PATH_LINE="export PATH=\$PATH:$BASE_DIR"
+  ;;
+"zsh")
+  RC_FILE="$HOME/.zshrc"
+  PATH_LINE="export PATH=\$PATH:$BASE_DIR"
+  ;;
+"fish")
+  RC_FILE="$HOME/.config/fish/config.fish"
+  PATH_LINE="fish_add_path --append $BASE_DIR"
+  ;;
+*)
+  RC_FILE=""
+  PATH_LINE="export PATH=\$PATH:$BASE_DIR"
+  ;;
+esac
+
+if [ -n "$RC_FILE" ] && [ -f "$RC_FILE" ]; then
+  if ! grep -qF "$PATH_LINE" "$RC_FILE"; then
+    echo "Setting environment PATH variable"
+    printf "\n%s\n" "$PATH_LINE" >> "$RC_FILE"
+    echo "Installation successful."
+    echo "Run 'source $RC_FILE' or open a new terminal window to use 'grove --help'."
+  else
+    echo "PATH is already set in $RC_FILE. Skipping update."
+    echo "Installation successful."
+  fi
+else
+  echo "${RC_FILE:-Shell startup file} not found."
+  echo "Please set the PATH variable manually by appending the following line to your shell's .*rc file."
+  echo "$PATH_LINE"
+fi

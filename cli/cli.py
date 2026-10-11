@@ -5,11 +5,11 @@ from __future__ import annotations
 import argparse
 import sys
 
-from config import config_path_from_args, load_config
-from errors import LaunchError
-from index import command_build_index
-from listing import command_list
-from sessions import (
+from cli.config import config_path_from_args, load_config
+from cli.errors import LaunchError
+from cli.index import command_build_index
+from cli.listing import command_list
+from cli.sessions import (
     open_sessions,
     parse_branch_overrides,
     parse_workspace_names,

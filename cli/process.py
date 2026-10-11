@@ -7,7 +7,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from errors import LaunchError
+from cli.errors import LaunchError
 
 
 def run_process(

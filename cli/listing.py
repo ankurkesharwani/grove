@@ -9,11 +9,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from config import config_repo_paths, load_config
-from errors import LaunchError
-from git import Worktree, git_repo_root, parse_worktree_records
-from paths import PROJECT_DIR, printable_path
-from process import require_executable
+from cli.config import config_repo_paths, load_config
+from cli.errors import LaunchError
+from cli.git import Worktree, git_repo_root, parse_worktree_records
+from cli.paths import PROJECT_DIR, printable_path
+from cli.process import require_executable
 
 
 def list_repo_entry(repo_name: str, repo_path: Path) -> tuple[str, list[Worktree]]:

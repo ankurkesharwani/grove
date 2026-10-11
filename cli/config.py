@@ -10,8 +10,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .errors import LaunchError
-from .paths import DEFAULT_CONFIG, PROJECT_DIR, expand_path, printable_path
+from cli.errors import LaunchError
+from cli.paths import DEFAULT_CONFIG, PROJECT_DIR, expand_path, printable_path
 
 
 def yaml_module() -> tuple[Any, Any]:

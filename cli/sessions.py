@@ -7,9 +7,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from config import config_repo_paths
-from errors import LaunchError
-from git import (
+from cli.config import config_repo_paths
+from cli.errors import LaunchError
+from cli.git import (
     Worktree,
     branch_exists,
     choose_base_ref,
@@ -17,7 +17,7 @@ from git import (
     parse_worktree_records,
     validate_branch_name,
 )
-from .process import require_executable, run_process
+from cli.process import require_executable, run_process
 
 
 def parse_workspace_names(raw: str | None) -> list[str]:

@@ -5,11 +5,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from config import atomic_dump_config, config_repo_paths, load_config, set_config_repo_path
-from errors import LaunchError
-from git import git_common_dir, git_dir, git_repo_root, remote_repo_name
-from paths import printable_path
-from process import require_executable
+from cli.config import atomic_dump_config, config_repo_paths, load_config, set_config_repo_path
+from cli.errors import LaunchError
+from cli.git import git_common_dir, git_dir, git_repo_root, remote_repo_name
+from cli.paths import printable_path
+from cli.process import require_executable
 
 
 def discover_repositories(scan_root: Path) -> list[Path]:

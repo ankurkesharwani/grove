@@ -89,11 +89,12 @@ cd grove
 ./install
 ```
 
-Add the Grove directory to your `PATH`:
-
-```sh
-export PATH="$PATH:/path/to/grove"
-```
+The installer recreates the virtual environment, installs the dependencies,
+and adds the Grove directory to your `PATH` in `~/.bashrc`, `~/.zshrc`, or
+`~/.config/fish/config.fish`, depending on your shell. It then prints the
+`source` command that reloads the startup file, or you can open a new
+terminal. For any other shell, it prints the
+line to add yourself.
 
 ## Configure
 
