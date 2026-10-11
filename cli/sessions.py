@@ -198,17 +198,10 @@ def tmux_has_session(name: str) -> bool:
     return result.returncode == 0
 
 
-def open_sessions(
-    config: dict[str, Any],
-    config_path: Path,
-    workspace_names: list[str],
-    worktree_name: str,
-    branch_overrides: dict[str, str],
-    attach: bool,
-    command_names: list[str],
-) -> int:
-    require_executable("git")
-    commands = resolve_commands(config, command_names)
+def select_repos(
+    config: dict[str, Any], config_path: Path, workspace_names: list[str]
+) -> dict[str, Path]:
+    """Return the Git root of every repo the workspace names select, in order."""
     workspaces = config["workspaces"]
     repo_paths = config_repo_paths(config, config_path)
     unknown_names = [
@@ -236,16 +229,10 @@ def open_sessions(
             if repo_name not in selected_repos:
                 selected_repos.append(repo_name)
 
-    invalid_overrides = [name for name in branch_overrides if name not in selected_repos]
-    if invalid_overrides:
-        raise LaunchError(
-            "Branch override refers to repo(s) not selected by the workspace(s): "
-            + ", ".join(invalid_overrides)
-        )
     if not selected_repos:
         raise LaunchError("The selected workspace(s) contain no repos.")
 
-    # Validate every configured path before starting to create sessions.
+    # Validate every configured path before changing anything.
     roots: dict[str, Path] = {}
     for repo_name in selected_repos:
         repo_path = repo_paths[repo_name]
@@ -258,6 +245,27 @@ def open_sessions(
                 f"configured {repo_path}, Git root is {root}."
             )
         roots[repo_name] = root
+    return roots
+
+
+def open_sessions(
+    config: dict[str, Any],
+    config_path: Path,
+    workspace_names: list[str],
+    worktree_name: str,
+    branch_overrides: dict[str, str],
+    attach: bool,
+    command_names: list[str],
+) -> int:
+    require_executable("git")
+    commands = resolve_commands(config, command_names)
+    roots = select_repos(config, config_path, workspace_names)
+    invalid_overrides = [name for name in branch_overrides if name not in roots]
+    if invalid_overrides:
+        raise LaunchError(
+            "Branch override refers to repo(s) not selected by the workspace(s): "
+            + ", ".join(invalid_overrides)
+        )
 
     try:
         run_process(["tmux", "-V"])
@@ -266,7 +274,7 @@ def open_sessions(
 
     failures = 0
     attach_target: str | None = None
-    for repo_name in selected_repos:
+    for repo_name in roots:
         session_name = f"{repo_name}-{worktree_name}"
         if tmux_has_session(session_name):
             print(f"Skipped (session exists): {session_name}")

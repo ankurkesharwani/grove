@@ -210,5 +210,19 @@ grove launch -w example-stack -t feature-search -c nvim -c agent --attach
 grove launch -w api -t feature-search -c 'npm run dev'
 ```
 
+Remove a worktree from every repo in one or more workspaces:
+
+```sh
+grove prune --workspace example-stack,tools --worktree feature-search
+```
+
+`prune` shows what it will remove and asks before doing it; `-y/--yes` skips
+that question. Branches are always kept, so you can recreate the worktree or
+push the branch later. A worktree with uncommitted or untracked changes is
+skipped unless you pass `-f/--force`. If a worktree's tmux session is still
+open, `prune` asks whether to kill the session and remove the worktree, or leave
+both alone. `--yes` doesn't answer that question, and without an answer the
+worktree is left alone.
+
 `grove list` pipes its output through `$PAGER` (default `less`) when run in a
 terminal. `less` clips long lines; piped output stays plain text.

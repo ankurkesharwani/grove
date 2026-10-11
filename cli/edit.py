@@ -12,6 +12,7 @@ from pathlib import Path
 from cli.config import atomic_write, load_config
 from cli.errors import LaunchError
 from cli.paths import PROJECT_DIR
+from cli.prompt import confirm
 
 EXAMPLE_CONFIG = PROJECT_DIR / "sessions.example.yaml"
 
@@ -39,14 +40,6 @@ def run_editor(editor: str, path: Path) -> None:
         )
 
 
-def ask_edit_again() -> bool:
-    try:
-        answer = input("Edit again? [Y/n] ")
-    except EOFError:
-        return False
-    return answer.strip().lower() in ("", "y", "yes")
-
-
 def command_edit(config_path: Path) -> int:
     editor = find_editor()
     exists = config_path.exists()
@@ -67,7 +60,7 @@ def command_edit(config_path: Path) -> int:
                 load_config(draft)
             except LaunchError as exc:
                 print(f"grove: invalid config: {exc}", file=sys.stderr)
-                if ask_edit_again():
+                if confirm("Edit again?", default=sys.stdin.isatty()):
                     continue
                 print("Edit discarded; config not changed.")
                 return 1

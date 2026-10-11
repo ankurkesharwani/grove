@@ -10,6 +10,7 @@ from cli.edit import command_edit
 from cli.errors import LaunchError
 from cli.index import command_build_index
 from cli.listing import command_list
+from cli.prune import command_prune
 from cli.sessions import (
     open_sessions,
     parse_branch_overrides,
@@ -34,9 +35,11 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-w",
         "--workspace",
-        help="Comma-separated workspace or repo entry names to open",
+        help="Comma-separated workspace or repo entry names to open or prune",
     )
-    parser.add_argument("-t", "--worktree", help="Worktree label to open or create")
+    parser.add_argument(
+        "-t", "--worktree", help="Worktree label to open, create, or prune"
+    )
     parser.add_argument(
         "--branch",
         action="append",
@@ -59,49 +62,75 @@ def make_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "command", nargs="?", choices=("launch", "build-index", "list", "edit")
+        "-f",
+        "--force",
+        action="store_true",
+        help="prune: remove worktrees that have uncommitted or untracked changes",
+    )
+    parser.add_argument(
+        "-y", "--yes", action="store_true", help="prune: skip the confirmation prompt"
+    )
+    parser.add_argument(
+        "command", nargs="?", choices=("launch", "prune", "build-index", "list", "edit")
     )
     parser.add_argument("folder", nargs="?", help="Folder to scan with build-index")
     return parser
+
+
+COMMAND_OPTIONS = {
+    "launch": {"--workspace", "--worktree", "--branch", "--attach", "--command"},
+    "prune": {"--workspace", "--worktree", "--force", "--yes"},
+    "build-index": set(),
+    "list": set(),
+    "edit": set(),
+}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = make_parser()
     args = parser.parse_args(argv)
     try:
+        if args.command is None:
+            parser.error("a command is required: " + ", ".join(COMMAND_OPTIONS))
+        given_options = {
+            "--workspace": args.workspace,
+            "--worktree": args.worktree,
+            "--branch": args.branch,
+            "--attach": args.attach,
+            "--command": args.commands,
+            "--force": args.force,
+            "--yes": args.yes,
+        }
+        invalid = [
+            option for option, value in given_options.items()
+            if value and option not in COMMAND_OPTIONS[args.command]
+        ]
+        if invalid:
+            parser.error(f"{', '.join(invalid)} cannot be used with {args.command}")
+        if args.folder and args.command != "build-index":
+            parser.error(f"{args.command} does not take a folder")
+
         config_path = config_path_from_args(args)
-        launch_options = (
-            args.workspace or args.worktree or args.branch or args.attach or args.commands
-        )
         if args.command == "build-index":
             if not args.folder:
                 parser.error("build-index requires <folder>")
-            if launch_options:
-                parser.error("launch options cannot be used with build-index")
             return command_build_index(args.folder, config_path)
         if args.command == "list":
-            if args.folder:
-                parser.error("list does not take a folder")
-            if launch_options:
-                parser.error("launch options cannot be used with list")
             return command_list(config_path)
         if args.command == "edit":
-            if args.folder:
-                parser.error("edit does not take a folder")
-            if launch_options:
-                parser.error("launch options cannot be used with edit")
             return command_edit(config_path)
-        if args.command is None:
-            parser.error("a command is required: launch, build-index, list, or edit")
-        if args.folder:
-            parser.error("launch does not take a folder")
+
         if not args.worktree:
-            parser.error("launch requires --worktree <name>")
+            parser.error(f"{args.command} requires --worktree <name>")
         validate_worktree_name(args.worktree)
         workspace_names = parse_workspace_names(args.workspace)
+        _, config = load_config(config_path)
+        if args.command == "prune":
+            return command_prune(
+                config, config_path, workspace_names, args.worktree, args.force, args.yes
+            )
         branch_overrides = parse_branch_overrides(args.branch)
         command_names = parse_command_names(args.commands)
-        _, config = load_config(config_path)
         return open_sessions(
             config,
             config_path,
@@ -114,4 +143,3 @@ def main(argv: list[str] | None = None) -> int:
     except LaunchError as exc:
         print(f"grove: error: {exc}", file=sys.stderr)
         return 1
-
