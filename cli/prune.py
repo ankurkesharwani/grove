@@ -17,6 +17,7 @@ from cli.sessions import (
     expected_worktree_path,
     find_existing_worktree,
     select_repos,
+    session_name_for,
     tmux_has_session,
 )
 
@@ -69,7 +70,7 @@ def command_prune(
             )
             refused += 1
             continue
-        session_name = f"{repo_name}-{worktree_name}"
+        session_name = session_name_for(repo_name, worktree_name)
         session = session_name if has_tmux and tmux_has_session(session_name) else None
         if session and not confirm(
             f"tmux session {session!r} is open. Kill it and remove {worktree.path}?",

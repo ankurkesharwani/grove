@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import sys
+import textwrap
+from typing import Any
 
 from cli.config import config_path_from_args, load_config
 from cli.edit import command_edit
@@ -20,35 +22,93 @@ from cli.sessions import (
 )
 
 
-def make_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="grove",
-        description="Index Git repos and open their named worktrees in tmux.",
-    )
+def add_config_option(parser: argparse.ArgumentParser, default: object) -> None:
     parser.add_argument(
         "--config",
+        default=default,
+        metavar="PATH",
         help=(
             "YAML config path (default: GROVE_CONFIG, then legacy config "
             "variables, then sessions.yaml beside the tool)"
         ),
     )
+
+
+def add_command(
+    commands: Any, name: str, summary: str, description: str, examples: str
+) -> argparse.ArgumentParser:
+    parser = commands.add_parser(
+        name,
+        help=summary,
+        # The raw formatter keeps the examples as written, so wrap the description here.
+        description=textwrap.fill(description, width=79),
+        epilog="examples:\n" + examples,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    # SUPPRESS keeps a --config given before the command from being reset here.
+    add_config_option(parser, argparse.SUPPRESS)
+    parser.set_defaults(command_parser=parser)
+    return parser
+
+
+def add_selection_options(parser: argparse.ArgumentParser, action: str) -> None:
     parser.add_argument(
         "-w",
         "--workspace",
-        help="Comma-separated workspace or repo entry names to open or prune",
+        required=True,
+        metavar="NAMES",
+        help="comma-separated workspace or repo entry names",
     )
     parser.add_argument(
-        "-t", "--worktree", help="Worktree label to open, create, or prune"
+        "-t",
+        "--worktree",
+        required=True,
+        metavar="NAME",
+        help=f"worktree name to {action}",
     )
-    parser.add_argument(
+
+
+def make_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="grove",
+        description=(
+            "Index Git repos and open named worktrees of them as tmux sessions. "
+            "Run 'grove <command> -h' for a command's options."
+        ),
+    )
+    add_config_option(parser, None)
+    commands = parser.add_subparsers(
+        dest="command", required=True, title="commands", metavar="<command>"
+    )
+
+    launch = add_command(
+        commands,
+        "launch",
+        "open a worktree of each selected repo in its own tmux session",
+        (
+            "Open the worktree NAME of every repo in the selected workspaces, "
+            "creating it from origin/master (or origin/main) on a new branch if "
+            "needed, and start a tmux session for each named <repo>@<worktree>. "
+            "Existing worktrees are reopened and running sessions are skipped."
+        ),
+        "  grove launch -w example-stack -t feature-search\n"
+        "  grove launch -w api,web -t review-42 --branch api=feature/search\n"
+        "  grove launch -w api -t feature-search -c nvim -c agent --attach\n",
+    )
+    add_selection_options(launch, "open or create")
+    launch.add_argument(
         "--branch",
         action="append",
         default=[],
         metavar="REPO=BRANCH",
-        help="Target branch override for a repo (repeatable)",
+        help="branch name for a repo's new worktree instead of NAME (repeatable)",
     )
-    parser.add_argument("--attach", action="store_true", help="Attach to the first session")
-    parser.add_argument(
+    launch.add_argument(
+        "--attach",
+        action="store_true",
+        help="attach to the first session (or switch to it inside tmux)",
+    )
+    launch.add_argument(
         "-c",
         "--command",
         dest="commands",
@@ -56,72 +116,89 @@ def make_parser() -> argparse.ArgumentParser:
         default=[],
         metavar="NAME",
         help=(
-            "Command to run in each new session: a name from the config's "
+            "command to run in each new session: a name from the config's "
             "commands section, or a literal command (repeatable; each extra "
             "command gets its own window)"
         ),
     )
-    parser.add_argument(
+
+    prune = add_command(
+        commands,
+        "prune",
+        "remove a worktree from each selected repo",
+        (
+            "Remove the worktree NAME from every repo in the selected workspaces. "
+            "Shows what will be removed and asks first. Branches are kept. If a "
+            "worktree's tmux session is open, asks whether to kill it or skip "
+            "that worktree."
+        ),
+        "  grove prune -w example-stack -t feature-search\n"
+        "  grove prune -w api,web -t review-42 --force --yes\n",
+    )
+    add_selection_options(prune, "remove")
+    prune.add_argument(
         "-f",
         "--force",
         action="store_true",
-        help="prune: remove worktrees that have uncommitted or untracked changes",
+        help="also remove worktrees with uncommitted or untracked changes",
     )
-    parser.add_argument(
-        "-y", "--yes", action="store_true", help="prune: skip the confirmation prompt"
+    prune.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="skip the final confirmation (open sessions are still asked about)",
     )
-    parser.add_argument(
-        "command", nargs="?", choices=("launch", "prune", "build-index", "list", "edit")
+
+    build_index = add_command(
+        commands,
+        "build-index",
+        "scan a folder for Git repos and add them to the config",
+        (
+            "Find Git repositories under FOLDER and add them to the config's "
+            "repos section, named after their origin remote. Repos already in "
+            "the config are left as they are."
+        ),
+        "  grove build-index ~/Projects\n",
     )
-    parser.add_argument("folder", nargs="?", help="Folder to scan with build-index")
+    build_index.add_argument("folder", help="folder to scan")
+
+    add_command(
+        commands,
+        "list",
+        "show workspaces, repos, branches, and worktree paths",
+        "Show every workspace, repo, branch, and worktree path in one table.",
+        "  grove list\n",
+    )
+
+    add_command(
+        commands,
+        "edit",
+        "edit the config in your editor",
+        (
+            "Open a copy of the config in $VISUAL or $EDITOR (falling back to "
+            "vim, then vi). When you save and quit, the copy replaces the config "
+            "if it is valid; if not, you can edit it again."
+        ),
+        "  grove edit\n  EDITOR=nano grove edit\n",
+    )
     return parser
-
-
-COMMAND_OPTIONS = {
-    "launch": {"--workspace", "--worktree", "--branch", "--attach", "--command"},
-    "prune": {"--workspace", "--worktree", "--force", "--yes"},
-    "build-index": set(),
-    "list": set(),
-    "edit": set(),
-}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = make_parser()
-    args = parser.parse_args(argv)
+    args, extra = parser.parse_known_args(argv)
+    if extra:
+        # Report unknown options against the command's own usage line.
+        args.command_parser.error(f"unrecognized arguments: {' '.join(extra)}")
     try:
-        if args.command is None:
-            parser.error("a command is required: " + ", ".join(COMMAND_OPTIONS))
-        given_options = {
-            "--workspace": args.workspace,
-            "--worktree": args.worktree,
-            "--branch": args.branch,
-            "--attach": args.attach,
-            "--command": args.commands,
-            "--force": args.force,
-            "--yes": args.yes,
-        }
-        invalid = [
-            option for option, value in given_options.items()
-            if value and option not in COMMAND_OPTIONS[args.command]
-        ]
-        if invalid:
-            parser.error(f"{', '.join(invalid)} cannot be used with {args.command}")
-        if args.folder and args.command != "build-index":
-            parser.error(f"{args.command} does not take a folder")
-
         config_path = config_path_from_args(args)
         if args.command == "build-index":
-            if not args.folder:
-                parser.error("build-index requires <folder>")
             return command_build_index(args.folder, config_path)
         if args.command == "list":
             return command_list(config_path)
         if args.command == "edit":
             return command_edit(config_path)
 
-        if not args.worktree:
-            parser.error(f"{args.command} requires --worktree <name>")
         validate_worktree_name(args.worktree)
         workspace_names = parse_workspace_names(args.workspace)
         _, config = load_config(config_path)

@@ -99,10 +99,16 @@ def start_commands(
 
 
 def validate_worktree_name(name: str) -> None:
-    if not name or name in {".", ".."} or "," in name or "/" in name or "\\" in name:
+    if not name or name in {".", ".."} or any(char in name for char in ",@/\\"):
         raise LaunchError(
-            "Worktree name must be a non-empty single path component without commas."
+            "Worktree name must be a non-empty single path component "
+            "without ',' or '@'."
         )
+
+
+def session_name_for(repo_name: str, worktree_name: str) -> str:
+    # Worktree names cannot contain "@", so the last "@" always splits the two.
+    return f"{repo_name}@{worktree_name}"
 
 
 def expected_worktree_path(repo: Path, worktree_name: str) -> Path:
@@ -275,7 +281,7 @@ def open_sessions(
     failures = 0
     attach_target: str | None = None
     for repo_name in roots:
-        session_name = f"{repo_name}-{worktree_name}"
+        session_name = session_name_for(repo_name, worktree_name)
         if tmux_has_session(session_name):
             print(f"Skipped (session exists): {session_name}")
             if attach_target is None:

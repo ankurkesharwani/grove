@@ -142,6 +142,9 @@ starts from `sessions.example.yaml`, and saving creates the config.
 
 ## Use
 
+`grove -h` lists the commands, and `grove <command> -h` shows each command's
+options with examples.
+
 Index the repositories under a folder:
 
 ```sh
@@ -174,9 +177,10 @@ grove launch -w api -t feature-search -c nvim
 `--workspace` also takes a comma-separated list, and repos that appear in more
 than one of the listed workspaces open only once.
 
-Each tmux session is named `<repo-entry>-<worktree-name>`. The worktree name
-doubles as the new branch name unless you pass `--branch REPO=BRANCH`, which
-you can repeat to name branches per repo:
+Each tmux session is named `<repo-entry>@<worktree-name>`, so worktree names
+can't contain `@` (or `,` and `/`). The worktree name doubles as the new branch
+name unless you pass `--branch REPO=BRANCH`, which you can repeat to name
+branches per repo:
 
 ```sh
 grove launch --workspace example-stack --worktree review-42 \
