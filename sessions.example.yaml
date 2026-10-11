@@ -1,5 +1,9 @@
 version: 1
 
+commands:
+  nvim: nvim
+  agent: claude --continue
+
 workspaces:
   example-stack:
     - api

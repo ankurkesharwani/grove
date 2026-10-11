@@ -8,7 +8,7 @@ import shlex
 import stat
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TextIO
 
 from cli.errors import LaunchError
 from cli.paths import DEFAULT_CONFIG, PROJECT_DIR, expand_path, printable_path
@@ -108,6 +108,17 @@ def validate_config(config: dict[str, Any]) -> None:
         if not isinstance(raw_path, str) or not raw_path.strip():
             raise LaunchError(f"Repo {repo_name!r} must have a path string.")
 
+    commands = config.get("commands", {})
+    if not isinstance(commands, dict):
+        raise LaunchError("Config field 'commands' must be a mapping.")
+    for command_name, command in commands.items():
+        if not isinstance(command_name, str) or not command_name.strip():
+            raise LaunchError("Command names must be non-empty strings.")
+        if not isinstance(command, str) or not command.strip():
+            raise LaunchError(
+                f"Command {command_name!r} must have a command string."
+            )
+
 
 def config_repo_paths(config: dict[str, Any], config_path: Path) -> dict[str, Path]:
     resolved: dict[str, Path] = {}
@@ -121,12 +132,16 @@ def set_config_repo_path(config: dict[str, Any], repo_name: str, path: Path) -> 
 
 
 def atomic_dump_config(yaml: Any, config: dict[str, Any], path: Path) -> None:
+    atomic_write(path, lambda stream: yaml.dump(config, stream))
+
+
+def atomic_write(path: Path, write: Callable[[TextIO], Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     original_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
     fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            yaml.dump(config, stream)
+            write(stream)
             stream.flush()
             os.fsync(stream.fileno())
         os.chmod(temp_name, original_mode)

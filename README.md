@@ -110,10 +110,14 @@ Put the `export` line in your shell startup file so it survives new terminals.
 `--config PATH` overrides the environment variable. If neither is set, Grove
 looks for `sessions.yaml` next to its launcher.
 
-The config has two sections, a repo catalog and your workspaces:
+The config has a repo catalog, your workspaces, and optional named commands:
 
 ```yaml
 version: 1
+
+commands:
+  nvim: nvim
+  agent: claude --continue
 
 workspaces:
   example-stack:
@@ -125,9 +129,16 @@ repos:
   web: ~/Projects/example/web
 ```
 
-`build-index` only writes to `repos`. You maintain `workspaces` by hand. A repo
-can belong to more than one workspace, and you can always open a single repo
-by its own name.
+`build-index` only writes to `repos`. You maintain `workspaces` and `commands`
+by hand. A repo can belong to more than one workspace, and you can always open
+a single repo by its own name.
+
+`grove edit` opens a copy of the config in `$VISUAL` or `$EDITOR` (falling back
+to `vim`, then `vi`), the way `git commit` opens the commit message. When you
+save and quit, Grove checks the copy and, if it's valid, replaces the config
+with it. If the edit is invalid, Grove shows the error and offers to reopen your
+copy; declining keeps the old config. If no config exists yet, the editor
+starts from `sessions.example.yaml`, and saving creates the config.
 
 ## Use
 
@@ -152,6 +163,12 @@ Open every repo in a workspace, or open a single repo:
 ```sh
 grove launch --workspace example-stack --worktree feature-search
 grove launch --workspace api --worktree feature-search
+```
+
+`-w`, `-t`, and `-c` are short for `--workspace`, `--worktree`, and `--command`:
+
+```sh
+grove launch -w api -t feature-search -c nvim
 ```
 
 `--workspace` also takes a comma-separated list, and repos that appear in more
@@ -180,12 +197,17 @@ it reopens existing worktrees and skips tmux sessions that are already running.
 `--attach` attaches to the first session it created or found. If you're
 already inside tmux, it switches the client to that session instead.
 
-`--nvim` starts Neovim in each newly created session by typing `nvim` into its
-shell, so quitting Neovim leaves you at a shell in the worktree. Sessions that
+`--command NAME` runs a command in each newly created session by typing it into
+the session's shell, so quitting the program leaves you at a shell in the
+worktree. `NAME` is looked up in the `commands` section; if it isn't there, it
+runs as a literal command. Repeat the flag to run more than one: the first
+command runs in the first window and each extra one gets its own window, named
+after the command entry (or the program, for a literal command). Sessions that
 were already running are left untouched.
 
 ```sh
-grove launch --workspace example-stack --worktree feature-search --nvim --attach
+grove launch -w example-stack -t feature-search -c nvim -c agent --attach
+grove launch -w api -t feature-search -c 'npm run dev'
 ```
 
 `grove list` pipes its output through `$PAGER` (default `less`) when run in a

@@ -45,6 +45,59 @@ def parse_branch_overrides(raw_items: list[str]) -> dict[str, str]:
     return overrides
 
 
+def parse_command_names(raw_items: list[str]) -> list[str]:
+    names = [item.strip() for item in raw_items]
+    if any(not name for name in names):
+        raise LaunchError("--command was given an empty value.")
+    return names
+
+
+def resolve_commands(
+    config: dict[str, Any], names: list[str]
+) -> list[tuple[str, str]]:
+    """Map each name to (window name, command), using it as a literal if unregistered."""
+    registered = config.get("commands", {})
+    resolved: list[tuple[str, str]] = []
+    for name in names:
+        if name in registered:
+            resolved.append((name, registered[name].strip()))
+        else:
+            resolved.append((Path(name.split()[0]).name, name))
+    return resolved
+
+
+def send_command(target: str, command: str) -> None:
+    # -l types the text literally, so words like "Enter" are not read as keys.
+    run_process(["tmux", "send-keys", "-t", target, "-l", command])
+    run_process(["tmux", "send-keys", "-t", target, "Enter"])
+
+
+def start_commands(
+    session_name: str, first_window: str, path: Path, commands: list[tuple[str, str]]
+) -> None:
+    for index, (window_name, command) in enumerate(commands):
+        if index == 0:
+            target = first_window
+        else:
+            target = run_process(
+                [
+                    "tmux",
+                    "new-window",
+                    "-d",
+                    "-P",
+                    "-F",
+                    "#{window_id}",
+                    "-t",
+                    f"={session_name}:",
+                    "-n",
+                    window_name,
+                    "-c",
+                    str(path),
+                ]
+            ).stdout.strip()
+        send_command(target, command)
+
+
 def validate_worktree_name(name: str) -> None:
     if not name or name in {".", ".."} or "," in name or "/" in name or "\\" in name:
         raise LaunchError(
@@ -152,11 +205,10 @@ def open_sessions(
     worktree_name: str,
     branch_overrides: dict[str, str],
     attach: bool,
-    nvim: bool,
+    command_names: list[str],
 ) -> int:
     require_executable("git")
-    if nvim:
-        require_executable("nvim")
+    commands = resolve_commands(config, command_names)
     workspaces = config["workspaces"]
     repo_paths = config_repo_paths(config, config_path)
     unknown_names = [
@@ -226,21 +278,21 @@ def open_sessions(
             path, branch, created = create_or_find_worktree(
                 roots[repo_name], worktree_name, branch_overrides.get(repo_name)
             )
-            run_process(
+            first_window = run_process(
                 [
                     "tmux",
                     "new-session",
                     "-d",
+                    "-P",
+                    "-F",
+                    "#{window_id}",
                     "-s",
                     session_name,
                     "-c",
                     str(path),
                 ]
-            )
-            if nvim:
-                run_process(
-                    ["tmux", "send-keys", "-t", f"={session_name}:", "nvim", "Enter"]
-                )
+            ).stdout.strip()
+            start_commands(session_name, first_window, path, commands)
             if attach_target is None:
                 attach_target = session_name
             status = "Created" if created else "Opened"
